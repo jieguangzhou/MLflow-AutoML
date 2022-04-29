@@ -1,5 +1,6 @@
-from sklearn.metrics import classification_report
 import pickle
+
+from sklearn.metrics import classification_report
 
 
 def eval_classification_metrics(y_true, y_pred):

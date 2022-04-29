@@ -1,3 +1,5 @@
+import logging
+
 import click
 import mlflow
 import mlflow.sklearn
@@ -5,10 +7,26 @@ import mlflow.sklearn
 from automl.data import load_data
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(name)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+logger = logging.getLogger(__name__)
+
+ARTIFACT_TAG = "artifact"
+
+
 def get_tool(tool_name):
     tool_name = tool_name.lower()
+    assert tool_name in {"autosklearn", "flaml"}
     if tool_name.lower() == "autosklearn":
-        from automl.mod_autosklearn import AutoSklearn as Tool
+        from automl.mod.mod_autosklearn import AutoSklearn as Tool
+
+    elif tool_name.lower() == "flaml":
+        from automl.mod.mod_flaml import FLAML as Tool
+
     else:
         raise Exception(f"Does not support {tool_name}")
     return Tool
@@ -29,7 +47,7 @@ def create_model_version(model_name, run_id=None, auto_replace=True):
                 model_name, version=version.version, stage="Archived"
             )
 
-    uri = f"runs:/{run_id}/artifact"
+    uri = f"runs:/{run_id}/{ARTIFACT_TAG}"
     mv = mlflow.register_model(uri, model_name)
     client.transition_model_version_stage(
         model_name, version=mv.version, stage="Production"
@@ -53,28 +71,28 @@ def main(
     params,
 ):
 
+    Tool = get_tool(tool)
+
     train_x, train_y, test_x, test_y = load_data(
         data_path, label_column, random_state=random_state
     )
-    Tool = get_tool(tool)
+    automl = Tool.train_automl(train_x, train_y, other_params=params)
 
-    classifier = Tool.train_classifier(train_x, train_y, other_params=params)
     # import pickle
+    # automl = pickle.load(open(Tool.model_path, "rb"))
 
-    # classifier = pickle.load(open(Tool.model_path, "rb"))
-
-    metrics = Tool.eval(classifier, test_x, test_y)
-    print(metrics)
+    metrics = Tool.eval_automl(automl, test_x, test_y)
+    logger.info(f"metrics: {metrics}")
     mlflow.log_metrics(metrics)
 
-    Tool.save_classifier(classifier, Tool.model_path)
+    Tool.save_automl(automl, Tool.model_path)
 
     from predictor import PredictorWrapper
 
     artifacts = {"model_path": Tool.model_path}
 
     model_info = mlflow.pyfunc.log_model(
-        artifact_path="artifact",
+        artifact_path=ARTIFACT_TAG,
         python_model=PredictorWrapper(),
         artifacts=artifacts,
         conda_env=Tool.conda_env,

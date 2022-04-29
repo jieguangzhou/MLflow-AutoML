@@ -8,8 +8,8 @@ dependencies:
     - mlflow 
     - click==8.0.3
     - scikit-learn==0.24.2 
-    - xgboost==1.5.2
     - boto3==1.22.2 
     - pandas>=1.0.0 
     - setuptools<59.6.0
     - auto-sklearn==0.14.6
+    - flaml==1.0.1

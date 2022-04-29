@@ -1,13 +1,16 @@
 import pickle
+
 import numpy as np
 from autosklearn.classification import AutoSklearnClassifier
-from .params import Params
-from .metrics import eval_classification_metrics
-from sklearn.preprocessing import OrdinalEncoder
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OrdinalEncoder
+
+from automl.metrics import eval_classification_metrics
+from automl.mod.tool import BasePredictor, Tool
+from automl.params import Params
 
 
-class AutoSklearn:
+class AutoSklearn(Tool):
     model_path = "autosklearn.pkl"
 
     conda_env = {
@@ -29,9 +32,8 @@ class AutoSklearn:
     }
 
     @staticmethod
-    def train_classifier(train_x, train_y, other_params=None, **kwargs):
-        params = Params(AutoSklearnClassifier,
-                        param_str=other_params, **kwargs)
+    def train_automl(train_x, train_y, other_params=None, **kwargs):
+        params = Params(param_str=other_params, **kwargs)
         print(params)
         pipeline_mods = []
 
@@ -56,28 +58,39 @@ class AutoSklearn:
         return pipeline
 
     @staticmethod
-    def eval(pipeline: Pipeline, test_x, test_y):
+    def eval(pipeline: Pipeline, test_x, test_y, task="classification"):
         oridinal_encoder = pipeline.steps[0][1]
         classifier = pipeline.steps[1][1]
         test_x = oridinal_encoder.transform(test_x)
         y_pred = classifier.predict(test_x)
-        metrics = eval_classification_metrics(test_y, y_pred)
+        if task == "classification":
+            metrics = eval_classification_metrics(test_y, y_pred)
+        else:
+            metrics = super().eval_automl(automl, test_x, test_y)
+
         return metrics
 
     @staticmethod
-    def save_classifier(classifier: AutoSklearnClassifier, save_path: str):
+    def save_automl(classifier: AutoSklearnClassifier, save_path: str):
         with open(save_path, "wb") as w_f:
             pickle.dump(classifier, w_f)
 
 
-class Predictor:
-    def __init__(self, model_path):
+class Predictor(BasePredictor):
+    def load_automl(self, model_path):
         with open(model_path, "rb") as r_f:
             self.pipeline: AutoSklearnClassifier = pickle.load(r_f)
         self.oridinal_encoder = self.pipeline.steps[0][1]
-        self.classifier = self.pipeline.steps[1][1]
+        self.automl = self.pipeline.steps[1][1]
 
     def predict(self, inputs):
+        if isinstance(self.automl, AutoSklearnClassifier):
+            result = self.predict_classification(inputs)
+        else:
+            result = self.automl.predict(inputs)
+        return result
+
+    def predict_classification(self, inputs):
 
         inputs = self.oridinal_encoder.transform(inputs)
 
